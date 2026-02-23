@@ -8,61 +8,100 @@ If you like this project, please consider starring it and giving me a follow on 
 
 ## How It Works
 
+### System Architecture
+
 ```mermaid
-flowchart TB
-    subgraph Input
-        Q[User Query]
-        B[Breadth Parameter]
-        D[Depth Parameter]
+graph TB
+    subgraph Entrypoints["Entry Points"]
+        CLI["CLI\nsrc/run.ts"]
+        API["API Server\nsrc/api.ts\nPOST /api/research\nPOST /api/generate-report"]
     end
 
-    DR[Deep Research] -->
-    SQ[SERP Queries] -->
-    PR[Process Results]
-
-    subgraph Results[Results]
-        direction TB
-        NL((Learnings))
-        ND((Directions))
+    subgraph Core["Core Modules"]
+        FB["feedback.ts\nGenerate clarifying questions"]
+        DR["deep-research.ts\nRecursive research engine"]
+        PM["prompt.ts\nSystem prompt"]
     end
 
-    PR --> NL
-    PR --> ND
+    subgraph AILayer["AI Layer"]
+        PV["ai/providers.ts\nModel selection & config"]
+        TS["ai/text-splitter.ts\nToken-aware trimming"]
+    end
 
-    DP{depth > 0?}
+    subgraph LLMs["LLM Providers (priority order)"]
+        CM["Custom Endpoint\nCUSTOM_MODEL (highest)"]
+        FW["Fireworks\nDeepSeek-R1"]
+        OA["OpenAI\no3-mini (default)"]
+    end
 
-    RD["Next Direction:
-    - Prior Goals
-    - New Questions
-    - Learnings"]
+    subgraph WebServices["External Services"]
+        FC["Firecrawl API\nWeb search + Markdown extraction"]
+    end
 
-    MR[Markdown Report]
+    CLI -->|"query / breadth / depth"| FB
+    CLI -->|"combined query"| DR
+    API --> DR
 
-    %% Main Flow
-    Q & B & D --> DR
+    FB --> PV
+    DR --> PV
+    DR --> TS
+    DR -->|"search() timeout:15s, limit:5"| FC
+    PM -.->|"systemPrompt"| DR
 
-    %% Results to Decision
-    NL & ND --> DP
+    PV --> CM
+    PV --> FW
+    PV --> OA
 
-    %% Circular Flow
-    DP -->|Yes| RD
-    RD -->|New Context| DR
+    classDef entry fill:#7bed9f,stroke:#2ed573,color:black
+    classDef core fill:#70a1ff,stroke:#1e90ff,color:black
+    classDef ai fill:#ffa502,stroke:#ff7f50,color:black
+    classDef llm fill:#a29bfe,stroke:#6c5ce7,color:black
+    classDef ext fill:#ff4757,stroke:#ff6b81,color:black
 
-    %% Final Output
-    DP -->|No| MR
+    class CLI,API entry
+    class FB,DR,PM core
+    class PV,TS ai
+    class CM,FW,OA llm
+    class FC ext
+```
 
-    %% Styling
+### Recursive Research Flow
+
+```mermaid
+flowchart TD
+    START([User Input\nquery / breadth / depth])
+    GF["generateFeedback()\nGenerate clarifying questions"]
+    UQ[User answers questions]
+    CQ["combinedQuery\n= original query + Q&A"]
+
+    subgraph DeepResearch["deepResearch(query, breadth, depth)"]
+        GSQ["generateSerpQueries()\nGenerate 'breadth' search queries"]
+        PL["pLimit(2) — concurrency control"]
+        FS["firecrawl.search()\ntimeout:15s  limit:5 results"]
+        PS["processSerpResult()\nExtract learnings + followUpQuestions"]
+        DEC{depth > 0?}
+        REC["Recurse\nnewBreadth = ceil(breadth / 2)\nnewDepth = depth - 1"]
+        AGG["Aggregate & deduplicate\nlearnings + visitedUrls"]
+    end
+
+    WR["writeFinalReport() or writeFinalAnswer()"]
+    OUT(["Output: report.md / answer.md\nor JSON response"])
+
+    START --> GF --> UQ --> CQ --> DeepResearch
+    GSQ --> PL -->|"parallel per query"| FS --> PS
+    PS --> DEC
+    DEC -->|"Yes — new query = prevGoal + followUpQuestions"| REC --> GSQ
+    DEC -->|"No"| AGG --> WR --> OUT
+
     classDef input fill:#7bed9f,stroke:#2ed573,color:black
     classDef process fill:#70a1ff,stroke:#1e90ff,color:black
-    classDef recursive fill:#ffa502,stroke:#ff7f50,color:black
+    classDef decision fill:#ffa502,stroke:#ff7f50,color:black
     classDef output fill:#ff4757,stroke:#ff6b81,color:black
-    classDef results fill:#a8e6cf,stroke:#3b7a57,color:black
 
-    class Q,B,D input
-    class DR,SQ,PR process
-    class DP,RD recursive
-    class MR output
-    class NL,ND results
+    class START,CQ input
+    class GF,UQ,GSQ,PL,FS,PS,REC,AGG,WR process
+    class DEC decision
+    class OUT output
 ```
 
 ## Features
