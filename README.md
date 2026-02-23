@@ -10,98 +10,116 @@ If you like this project, please consider starring it and giving me a follow on 
 
 ### System Architecture
 
-```mermaid
-graph TB
-    subgraph Entrypoints["Entry Points"]
-        CLI["CLI\nsrc/run.ts"]
-        API["API Server\nsrc/api.ts\nPOST /api/research\nPOST /api/generate-report"]
-    end
+```plantuml
+@startuml
+skinparam backgroundColor white
+skinparam defaultFontSize 16
+skinparam defaultFontName Arial
+skinparam ArrowFontSize 14
+skinparam componentStyle rectangle
+skinparam padding 8
+skinparam TitleFontSize 20
 
-    subgraph Core["Core Modules"]
-        FB["feedback.ts\nGenerate clarifying questions"]
-        DR["deep-research.ts\nRecursive research engine"]
-        PM["prompt.ts\nSystem prompt"]
-    end
+title Open Deep Research — System Architecture
 
-    subgraph AILayer["AI Layer"]
-        PV["ai/providers.ts\nModel selection & config"]
-        TS["ai/text-splitter.ts\nToken-aware trimming"]
-    end
+package "Entry Points" #d5f5e3 {
+    component "CLI\nsrc/run.ts" as CLI
+    component "API Server\nsrc/api.ts\nPOST /api/research\nPOST /api/generate-report" as API
+}
 
-    subgraph LLMs["LLM Providers (priority order)"]
-        CM["Custom Endpoint\nCUSTOM_MODEL (highest)"]
-        FW["Fireworks\nDeepSeek-R1"]
-        OA["OpenAI\no3-mini (default)"]
-    end
+package "Core Modules" #d6eaf8 {
+    component "feedback.ts\nGenerate clarifying questions" as FB
+    component "deep-research.ts\nRecursive research engine" as DR
+    component "prompt.ts\nSystem prompt" as PM
+}
 
-    subgraph WebServices["External Services"]
-        FC["Firecrawl API\nWeb search + Markdown extraction"]
-    end
+package "AI Layer" #fdebd0 {
+    component "ai/providers.ts\nModel selection & config" as PV
+    component "ai/text-splitter.ts\nToken-aware trimming (25k tokens)" as TS
+}
 
-    CLI -->|"query / breadth / depth"| FB
-    CLI -->|"combined query"| DR
-    API --> DR
+package "LLM Providers (priority order)" #e8daef {
+    component "Custom Endpoint\nCUSTOM_MODEL (highest priority)" as CM
+    component "Fireworks\nDeepSeek-R1" as FW
+    component "OpenAI\no3-mini (default)" as OA
+}
 
-    FB --> PV
-    DR --> PV
-    DR --> TS
-    DR -->|"search() timeout:15s, limit:5"| FC
-    PM -.->|"systemPrompt"| DR
+package "External Services" #fadbd8 {
+    component "Firecrawl API\nWeb search + Markdown extraction" as FC
+}
 
-    PV --> CM
-    PV --> FW
-    PV --> OA
+CLI -down-> FB : query / breadth / depth
+CLI -down-> DR : combined query
+API -down-> DR : POST requests
 
-    classDef entry fill:#7bed9f,stroke:#2ed573,color:black
-    classDef core fill:#70a1ff,stroke:#1e90ff,color:black
-    classDef ai fill:#ffa502,stroke:#ff7f50,color:black
-    classDef llm fill:#a29bfe,stroke:#6c5ce7,color:black
-    classDef ext fill:#ff4757,stroke:#ff6b81,color:black
+FB -right-> PV
+DR -right-> PV
+DR -down-> TS
+DR -down-> FC : search()  timeout:15s  limit:5
+PM .down.> DR : systemPrompt
 
-    class CLI,API entry
-    class FB,DR,PM core
-    class PV,TS ai
-    class CM,FW,OA llm
-    class FC ext
+PV -down-> CM
+PV -down-> FW
+PV -down-> OA
+
+@enduml
 ```
 
 ### Recursive Research Flow
 
-```mermaid
-flowchart TD
-    START([User Input\nquery / breadth / depth])
-    GF["generateFeedback()\nGenerate clarifying questions"]
-    UQ[User answers questions]
-    CQ["combinedQuery\n= original query + Q&A"]
+```plantuml
+@startuml
+skinparam backgroundColor white
+skinparam defaultFontSize 16
+skinparam defaultFontName Arial
+skinparam ArrowFontSize 14
+skinparam ActivityFontSize 16
+skinparam ActivityBorderColor #1e90ff
+skinparam ActivityBackgroundColor #d6eaf8
+skinparam ActivityDiamondFontSize 15
+skinparam ActivityDiamondBackgroundColor #fdebd0
+skinparam ActivityDiamondBorderColor #ff7f50
+skinparam TitleFontSize 20
 
-    subgraph DeepResearch["deepResearch(query, breadth, depth)"]
-        GSQ["generateSerpQueries()\nGenerate 'breadth' search queries"]
-        PL["pLimit(2) — concurrency control"]
-        FS["firecrawl.search()\ntimeout:15s  limit:5 results"]
-        PS["processSerpResult()\nExtract learnings + followUpQuestions"]
-        DEC{depth > 0?}
-        REC["Recurse\nnewBreadth = ceil(breadth / 2)\nnewDepth = depth - 1"]
-        AGG["Aggregate & deduplicate\nlearnings + visitedUrls"]
-    end
+title Open Deep Research — Recursive Research Flow
 
-    WR["writeFinalReport() or writeFinalAnswer()"]
-    OUT(["Output: report.md / answer.md\nor JSON response"])
+start
 
-    START --> GF --> UQ --> CQ --> DeepResearch
-    GSQ --> PL -->|"parallel per query"| FS --> PS
-    PS --> DEC
-    DEC -->|"Yes — new query = prevGoal + followUpQuestions"| REC --> GSQ
-    DEC -->|"No"| AGG --> WR --> OUT
+:User Input\n**query** / **breadth** / **depth**;
 
-    classDef input fill:#7bed9f,stroke:#2ed573,color:black
-    classDef process fill:#70a1ff,stroke:#1e90ff,color:black
-    classDef decision fill:#ffa502,stroke:#ff7f50,color:black
-    classDef output fill:#ff4757,stroke:#ff6b81,color:black
+:generateFeedback()\nGenerate clarifying questions;
 
-    class START,CQ input
-    class GF,UQ,GSQ,PL,FS,PS,REC,AGG,WR process
-    class DEC decision
-    class OUT output
+:User answers questions;
+
+:combinedQuery\n= original query + Q&A;
+
+repeat
+  partition "deepResearch(query, breadth, depth)" {
+    :generateSerpQueries()\nGenerate **breadth** search queries;
+
+    fork
+      :firecrawl.search()\ntimeout:15s  limit:5 results;
+      :processSerpResult()\nExtract learnings + followUpQuestions;
+    end fork
+    note right
+      pLimit(2)
+      parallel execution
+    end note
+  }
+
+  :newBreadth = ceil(breadth / 2)\nnewDepth = depth - 1\nnewQuery = prevGoal + followUpQuestions;
+
+repeat while (depth > 0?) is (Yes)
+-> No;
+
+:Aggregate & deduplicate\nlearnings + visitedUrls;
+
+:writeFinalReport() or writeFinalAnswer();
+
+:Output: report.md / answer.md\nor JSON response;
+
+stop
+@enduml
 ```
 
 ## Features
