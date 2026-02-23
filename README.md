@@ -10,117 +10,11 @@ If you like this project, please consider starring it and giving me a follow on 
 
 ### System Architecture
 
-```plantuml
-@startuml
-skinparam backgroundColor white
-skinparam defaultFontSize 16
-skinparam defaultFontName Arial
-skinparam ArrowFontSize 14
-skinparam componentStyle rectangle
-skinparam padding 8
-skinparam TitleFontSize 20
-
-title Open Deep Research — System Architecture
-
-package "Entry Points" #d5f5e3 {
-    component "CLI\nsrc/run.ts" as CLI
-    component "API Server\nsrc/api.ts\nPOST /api/research\nPOST /api/generate-report" as API
-}
-
-package "Core Modules" #d6eaf8 {
-    component "feedback.ts\nGenerate clarifying questions" as FB
-    component "deep-research.ts\nRecursive research engine" as DR
-    component "prompt.ts\nSystem prompt" as PM
-}
-
-package "AI Layer" #fdebd0 {
-    component "ai/providers.ts\nModel selection & config" as PV
-    component "ai/text-splitter.ts\nToken-aware trimming (25k tokens)" as TS
-}
-
-package "LLM Providers (priority order)" #e8daef {
-    component "Custom Endpoint\nCUSTOM_MODEL (highest priority)" as CM
-    component "Fireworks\nDeepSeek-R1" as FW
-    component "OpenAI\no3-mini (default)" as OA
-}
-
-package "External Services" #fadbd8 {
-    component "Firecrawl API\nWeb search + Markdown extraction" as FC
-}
-
-CLI -down-> FB : query / breadth / depth
-CLI -down-> DR : combined query
-API -down-> DR : POST requests
-
-FB -right-> PV
-DR -right-> PV
-DR -down-> TS
-DR -down-> FC : search()  timeout:15s  limit:5
-PM .down.> DR : systemPrompt
-
-PV -down-> CM
-PV -down-> FW
-PV -down-> OA
-
-@enduml
-```
+![System Architecture](docs/architecture.png)
 
 ### Recursive Research Flow
 
-```plantuml
-@startuml
-skinparam backgroundColor white
-skinparam defaultFontSize 16
-skinparam defaultFontName Arial
-skinparam ArrowFontSize 14
-skinparam ActivityFontSize 16
-skinparam ActivityBorderColor #1e90ff
-skinparam ActivityBackgroundColor #d6eaf8
-skinparam ActivityDiamondFontSize 15
-skinparam ActivityDiamondBackgroundColor #fdebd0
-skinparam ActivityDiamondBorderColor #ff7f50
-skinparam TitleFontSize 20
-
-title Open Deep Research — Recursive Research Flow
-
-start
-
-:User Input\n**query** / **breadth** / **depth**;
-
-:generateFeedback()\nGenerate clarifying questions;
-
-:User answers questions;
-
-:combinedQuery\n= original query + Q&A;
-
-repeat
-  partition "deepResearch(query, breadth, depth)" {
-    :generateSerpQueries()\nGenerate **breadth** search queries;
-
-    fork
-      :firecrawl.search()\ntimeout:15s  limit:5 results;
-      :processSerpResult()\nExtract learnings + followUpQuestions;
-    end fork
-    note right
-      pLimit(2)
-      parallel execution
-    end note
-  }
-
-  :newBreadth = ceil(breadth / 2)\nnewDepth = depth - 1\nnewQuery = prevGoal + followUpQuestions;
-
-repeat while (depth > 0?) is (Yes)
--> No;
-
-:Aggregate & deduplicate\nlearnings + visitedUrls;
-
-:writeFinalReport() or writeFinalAnswer();
-
-:Output: report.md / answer.md\nor JSON response;
-
-stop
-@enduml
-```
+![Recursive Research Flow](docs/flow.png)
 
 ## Features
 

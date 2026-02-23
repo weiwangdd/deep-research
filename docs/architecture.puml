@@ -1,0 +1,55 @@
+@startuml
+skinparam backgroundColor white
+skinparam defaultFontSize 18
+skinparam defaultFontName Arial
+skinparam ArrowFontSize 16
+skinparam componentStyle rectangle
+skinparam padding 10
+skinparam TitleFontSize 22
+skinparam TitleFontStyle bold
+skinparam PackageFontSize 16
+skinparam PackageFontStyle bold
+
+title Open Deep Research — System Architecture
+
+package "Entry Points" #d5f5e3 {
+    component "CLI\nsrc/run.ts" as CLI
+    component "API Server\nsrc/api.ts\nPOST /api/research\nPOST /api/generate-report" as API
+}
+
+package "Core Modules" #d6eaf8 {
+    component "feedback.ts\nGenerate clarifying questions" as FB
+    component "deep-research.ts\nRecursive research engine" as DR
+    component "prompt.ts\nSystem prompt" as PM
+}
+
+package "AI Layer" #fdebd0 {
+    component "ai/providers.ts\nModel selection & config" as PV
+    component "ai/text-splitter.ts\nToken-aware trimming (25k tokens)" as TS
+}
+
+package "LLM Providers (priority order)" #e8daef {
+    component "Custom Endpoint\nCUSTOM_MODEL (highest priority)" as CM
+    component "Fireworks\nDeepSeek-R1" as FW
+    component "OpenAI\no3-mini (default)" as OA
+}
+
+package "External Services" #fadbd8 {
+    component "Firecrawl API\nWeb search + Markdown extraction" as FC
+}
+
+CLI -down-> FB : query / breadth / depth
+CLI -down-> DR : combined query
+API -down-> DR : POST requests
+
+FB -right-> PV
+DR -right-> PV
+DR -down-> TS
+DR -down-> FC : search()  timeout:15s  limit:5
+PM .down.> DR : systemPrompt
+
+PV -down-> CM
+PV -down-> FW
+PV -down-> OA
+
+@enduml
